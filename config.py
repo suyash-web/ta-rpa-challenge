@@ -1,5 +1,6 @@
 import os
 
 class DIRECTORIES:
-    FILEPATH = os.getcwd()+"/output/Fresh News.xlsx"
+    OUTPUT = os.getcwd()+"/output"
+    FILEPATH = f"{OUTPUT}/Fresh News.xlsx"
     IMAGE_PATH = os.getcwd()+"/images"

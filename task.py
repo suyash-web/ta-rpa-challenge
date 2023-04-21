@@ -49,35 +49,3 @@ if __name__ == "__main__":
     _task = Task()
     _task.make_dirs()
     _task.run_process()
-
-# from RPA.Robocorp.WorkItems import WorkItems
-# from fresh_news import NyTimes
-# from logger import logger
-# import os
-
-# if not os.path.exists(os.getcwd()+"/output"):
-#     os.mkdir(os.getcwd()+"/output")
-#     os.mkdir(os.getcwd()+"/output/images")
-
-# workitems = WorkItems()
-# workitems.get_input_work_item()
-# workitem = workitems.get_work_item_variables()
-
-# try:
-#     flag = False
-#     ny_times = NyTimes(workitem=workitem)
-#     logger.info(f"Searching query {ny_times.phrase}...")
-#     ny_times.search_query()
-#     try:
-#         ny_times.set_filters()
-#     except AssertionError:
-#         flag = True
-#         logger.info(f"Section {ny_times.section} is not available.")
-#     if not flag:
-#         ny_times.load_all_news()
-#         ny_times.fetch_data()
-#         logger.info("Query searched")
-#     ny_times.browser.close_browser()
-# except Exception as e:
-#     ny_times.browser.screenshot(filename="output/error.png")
-#     raise e

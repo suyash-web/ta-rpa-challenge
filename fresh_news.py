@@ -5,7 +5,7 @@ from time import sleep
 from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.styles import Font
-from config import FILEPATH, IMAGE_PATH
+from config import DIRECTORIES
 from selenium.common.exceptions import ElementClickInterceptedException
 import datetime
 import requests
@@ -139,7 +139,7 @@ class NyTimes:
         """
         Fetches the data for all the news.
         """
-        self.create_excel(FILEPATH)
+        self.create_excel(DIRECTORIES.FILEPATH)
         date_elements = self.browser.get_webelements("//span[@class='css-17ubb9w']")
         for index, date_element in enumerate(date_elements):
             date = self.browser.get_text(date_element)
@@ -150,11 +150,11 @@ class NyTimes:
                 description = "Not available"
             img_xpath = f"//div[@class='css-e1lvw9' and a/h4/text()='{title}']/following-sibling::figure[@class='css-tap2ym']/..//div/..//img[@class='css-rq4mmj']"
             if self.browser.is_element_visible(img_xpath):
-                filepath = f"{IMAGE_PATH}/img_{index+1}.png"
+                filepath = f"{DIRECTORIES.IMAGE_PATH}/img_{index+1}.png"
                 self.download_picture(img_xpath, filepath)
             else:
                 filepath = "Not available"
-            wb = load_workbook(FILEPATH)
+            wb = load_workbook(DIRECTORIES.FILEPATH)
             sheet: Worksheet = wb.active
             max_row = sheet.max_row
             sheet.cell(max_row+1, 1).value = title
@@ -163,4 +163,4 @@ class NyTimes:
             sheet.cell(max_row+1, 4).value = filepath
             sheet.cell(max_row+1, 5).value = f"Title: {self.get_count(title, self.phrase)} | Description: {self.get_count(description, self.phrase)}"
             sheet.cell(max_row+1, 6).value = self.is_money_present(title) or self.is_money_present(description)
-            wb.save(FILEPATH)
+            wb.save(DIRECTORIES.FILEPATH)

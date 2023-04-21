@@ -29,7 +29,7 @@ class Task:
         ny_times = NyTimes(workitem=self.get_workitems())
         try:
             flag = False
-            logger.info(f"Searching query {ny_times.phrase}...")
+            logger.info(f"Searching news for query '{ny_times.phrase}' and section '{ny_times.section}' for past {ny_times.months} months...")
             ny_times.search_query()
             try:
                 ny_times.set_filters()

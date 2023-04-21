@@ -1,6 +1,7 @@
 from RPA.Robocorp.WorkItems import WorkItems
 from fresh_news import NyTimes
 from logger import logger
+from config import DIRECTORIES
 import os
 
 class Task:
@@ -8,10 +9,10 @@ class Task:
         """
         Builds required directories.
         """
-        if not os.path.exists(os.getcwd()+"/output"):
-            os.mkdir(os.getcwd()+"/output")
-        if not os.path.exists(os.getcwd()+"/images"):
-            os.mkdir(os.getcwd()+"/images")
+        if not os.path.exists(DIRECTORIES.OUTPUT):
+            os.mkdir(DIRECTORIES.OUTPUT)
+        if not os.path.exists(DIRECTORIES.IMAGE_PATH):
+            os.mkdir(DIRECTORIES.IMAGE_PATH)
 
     def get_workitems(self) -> dict:
         """

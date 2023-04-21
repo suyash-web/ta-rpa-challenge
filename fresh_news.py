@@ -79,14 +79,7 @@ class NyTimes:
         """
         self.set_dates()
         self.browser.click_element_when_visible("//label[text()='Section']")
-        # self.browser.click_element_when_visible(f"//span[text()='{self.section}']")
-        # for testing
-        # sections = self.browser.get_webelements("//label[@class='css-1a8ayg6']")
-        # section: str = self.browser.get_text(sections[5])
-        # if "," in section:
-        #     section = section.replace(",", "")
-        # section = ''.join([i for i in section if not i.isdigit()])
-        self.browser.click_element_when_visible(f"//span[text()='{self.section.capitalize()}']") # {self.section}
+        self.browser.click_element_when_visible(f"//span[text()='{self.section.capitalize()}']")
         self.browser.click_element("//label[text()='Section']")
 
     @retry((Exception), 5, 5)
@@ -147,7 +140,7 @@ class NyTimes:
         Fetches the data for all the news.
         """
         self.create_excel(FILEPATH)
-        date_elements = self.browser.get_webelements("//span[@class='css-17ubb9w']") # list of date elements
+        date_elements = self.browser.get_webelements("//span[@class='css-17ubb9w']")
         for index, date_element in enumerate(date_elements):
             date = self.browser.get_text(date_element)
             title = self.browser.get_text(self.browser.get_webelements("//h4[@class='css-2fgx4k']")[index])
@@ -171,23 +164,3 @@ class NyTimes:
             sheet.cell(max_row+1, 5).value = f"Title: {self.get_count(title, self.phrase)} | Description: {self.get_count(description, self.phrase)}"
             sheet.cell(max_row+1, 6).value = self.is_money_present(title) or self.is_money_present(description)
             wb.save(FILEPATH)
-
-# if __name__ == "__main__":
-#     try:
-#         flag = False
-#         ny_times = NyTimes("Machines", "Sports", 3)
-#         print(f"Searching query {ny_times.phrase}...")
-#         ny_times.search_query()
-#         try:
-#             ny_times.set_filters()
-#         except AssertionError:
-#             flag = True
-#             print(f"Section {ny_times.section} is not available.")
-#         if not flag:
-#             ny_times.load_all_news()
-#             ny_times.fetch_data()
-#             print("Query searched")
-#         ny_times.browser.close_browser()
-#     except Exception as e:
-#         ny_times.browser.screenshot(filename="images/error.png")
-#         raise e

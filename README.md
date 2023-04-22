@@ -1,13 +1,17 @@
-# Template: Basic Python only robot
+# Bot to fetch the news
 
-Get started with just Python.
+Accepts workitems having search phrase, section and number of months.
 
-This template robot:
+Example of how to feed workitems:
 
-- Uses only Python.
-- Provides a simple template to start from (`task.py`).
+{
+    "phrase": "machines",
+    "section": "opinion",
+    "months": 3
+}
 
-## Learning materials
+- Value for "month" can either be an integer or a string.
 
-- [Python basics](https://robocorp.com/docs/languages-and-frameworks/python)
-- [Best practices in creating Python robots](https://robocorp.com/docs/development-guide/qa-and-best-practices/python-robots)
+## Note:
+
+- Excel file and zip folder with all the downloaded images will be available as artifacts on robocorp.

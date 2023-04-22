@@ -1,9 +1,10 @@
 from RPA.Browser.Selenium import Selenium
+from selenium.common.exceptions import ElementClickInterceptedException
 from dateutil.relativedelta import relativedelta
 from retry import retry
-from openpyxl import load_workbook
-from openpyxl.worksheet.worksheet import Worksheet
-from utilities import create_excel
+# from openpyxl import load_workbook
+# from openpyxl.worksheet.worksheet import Worksheet
+from utilities import create_excel, update_excel
 from config import DIRECTORIES
 from logger import logger
 import datetime
@@ -76,6 +77,15 @@ class NyTimes:
         number_of_news = int(news_info.split()[1])
         return number_of_news
     
+    @retry((ElementClickInterceptedException, AssertionError), 5, 5)
+    def load_more_news(self) -> None:
+        """
+        Loads more news
+        """
+        element = self.browser.get_webelement("//button[text()='Show More']")
+        self.browser.driver.execute_script("arguments[0].click();", element)
+        self.browser.scroll_element_into_view("//a[@data-testid='search-result-qualtrics-link']")
+
     @retry((Exception), 5, 5)
     def load_all_news(self) -> None:
         """
@@ -83,9 +93,7 @@ class NyTimes:
         """
         self.browser.scroll_element_into_view("//a[@data-testid='search-result-qualtrics-link']")
         while self.browser.is_element_visible("//button[text()='Show More']"):
-            element = self.browser.get_webelement("//button[text()='Show More']")
-            self.browser.driver.execute_script("arguments[0].click();", element)
-            self.browser.scroll_element_into_view("//a[@data-testid='search-result-qualtrics-link']")
+            self.load_more_news()
         all_news = self.browser.get_webelements("//h4[@class='css-2fgx4k']")
         self.browser.scroll_element_into_view(all_news[0])
     
@@ -125,7 +133,7 @@ class NyTimes:
         else:
             return False
 
-    def fetch_data(self) -> None:
+    def fetch_news_data(self) -> None:
         """
         Fetches data for all the news.
         """
@@ -147,16 +155,19 @@ class NyTimes:
                 img_xpath = f"//div[@class='css-e1lvw9' and a/h4/text()='{title}']/following-sibling::figure[@class='css-tap2ym']/..//div/..//img[@class='css-rq4mmj']"
                 if self.browser.is_element_visible(img_xpath):
                     filepath = f"{DIRECTORIES.IMAGE_PATH}/img_{index+1}.png"
+                    image_name = filepath.split("/")[-1]
                     self.download_picture(img_xpath, filepath)
                 else:
-                    filepath = "Not available"
-                workbook = load_workbook(DIRECTORIES.FILEPATH)
-                sheet: Worksheet = workbook.active
-                max_row = sheet.max_row
-                sheet.cell(max_row+1, 1).value = title
-                sheet.cell(max_row+1, 2).value = date
-                sheet.cell(max_row+1, 3).value = description
-                sheet.cell(max_row+1, 4).value = filepath
-                sheet.cell(max_row+1, 5).value = f"Title: {self.get_count_of_sub_string(title, self.phrase)} | Description: {self.get_count_of_sub_string(description, self.phrase)}"
-                sheet.cell(max_row+1, 6).value = self.is_money_present(title) or self.is_money_present(description)
-                workbook.save(DIRECTORIES.FILEPATH)
+                    image_name = "Not available"
+                title_count: int = self.get_count_of_sub_string(title, self.phrase)
+                desc_count: int = self.get_count_of_sub_string(title, self.phrase)
+                money_present: bool = self.is_money_present(title) or self.is_money_present(description)
+                update_excel(
+                    title=title,
+                    date=date,
+                    description=description,
+                    filename=image_name,
+                    title_count=title_count,
+                    desc_count=desc_count,
+                    money_present=money_present
+                )

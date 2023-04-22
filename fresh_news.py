@@ -2,8 +2,6 @@ from RPA.Browser.Selenium import Selenium
 from selenium.common.exceptions import ElementClickInterceptedException
 from dateutil.relativedelta import relativedelta
 from retry import retry
-# from openpyxl import load_workbook
-# from openpyxl.worksheet.worksheet import Worksheet
 from utilities import create_excel, update_excel
 from config import DIRECTORIES
 from logger import logger

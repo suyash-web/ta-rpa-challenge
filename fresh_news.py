@@ -68,7 +68,7 @@ class NyTimes:
 
     def total_news(self) -> int:
         """
-        Returns the total number of news present for the current filters.
+        Returns the total number of news present for the applied filters.
         """
         self.browser.wait_until_element_is_visible("//p[contains(text(), 'Showing')]", 5)
         news_info = self.browser.get_text("//p[contains(text(), 'Showing')]")
@@ -97,8 +97,9 @@ class NyTimes:
     
     def download_picture(self, img_xpath: str, img_path: str) -> None:
         """
-        Downlaods the image.
+        Downloads the image.
         :param img_xpath: Xpath of the image.
+        :param img_path: Path with image name where it will be downloaded.
         """
         image_url = self.browser.get_element_attribute(img_xpath, "src")
         image_data = requests.get(image_url).content

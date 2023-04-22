@@ -1,12 +1,11 @@
 from RPA.Browser.Selenium import Selenium
 from dateutil.relativedelta import relativedelta
 from retry import retry
-from time import sleep
-from openpyxl import Workbook, load_workbook
+from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
-from openpyxl.styles import Font
+from utilities import create_excel
 from config import DIRECTORIES
-from selenium.common.exceptions import ElementClickInterceptedException
+from logger import logger
 import datetime
 import requests
 import re
@@ -30,20 +29,6 @@ class NyTimes:
         three_mon_rel = relativedelta(months=int(self.months))
         req_date = (today - three_mon_rel).strftime("%m/%d/%Y")
         return req_date
-    
-    def create_excel(self, filepath) -> None:
-        """
-        Creates the excel file with required heads.
-        :param filepath: Path to the excel file.
-        """
-        workbook = Workbook()
-        workbook.save(filepath)
-        wb = load_workbook(filepath)
-        sheet: Worksheet = wb.active
-        for index, head in enumerate(self.heads):
-            sheet.cell(1, index+1).value = head
-            sheet.cell(1, index+1).font = Font(bold=True)
-        wb.save(filepath)
 
     def search_query(self):
         """
@@ -82,19 +67,24 @@ class NyTimes:
         self.browser.click_element_when_visible(f"//span[text()='{self.section.capitalize()}']")
         self.browser.click_element("//label[text()='Section']")
 
+    def total_news(self) -> int:
+        """
+        Returns the total number of news present for the current filters.
+        """
+        self.browser.wait_until_element_is_visible("//p[contains(text(), 'Showing')]", 5)
+        news_info = self.browser.get_text("//p[contains(text(), 'Showing')]")
+        number_of_news = int(news_info.split()[1])
+        return number_of_news
+    
     @retry((Exception), 5, 5)
     def load_all_news(self) -> None:
         """
         Loads all the news for the given time period.
         """
         self.browser.scroll_element_into_view("//a[@data-testid='search-result-qualtrics-link']")
-        sleep(3600)
         while self.browser.is_element_visible("//button[text()='Show More']"):
-            try:
-                self.browser.click_element("//button[text()='Show More']")
-            except ElementClickInterceptedException:
-                self.browser.click_element()
-            sleep(1)
+            element = self.browser.get_webelement("//button[text()='Show More']")
+            self.browser.driver.execute_script("arguments[0].click();", element)
             self.browser.scroll_element_into_view("//a[@data-testid='search-result-qualtrics-link']")
         all_news = self.browser.get_webelements("//h4[@class='css-2fgx4k']")
         self.browser.scroll_element_into_view(all_news[0])
@@ -104,24 +94,24 @@ class NyTimes:
         Downlaods the image.
         :param img_xpath: Xpath of the image.
         """
-        img_url = self.browser.get_element_attribute(img_xpath, "src")
-        data = requests.get(img_url).content
+        image_url = self.browser.get_element_attribute(img_xpath, "src")
+        image_data = requests.get(image_url).content
         with open(img_path, "wb") as f:
-            f.write(data)
+            f.write(image_data)
 
-    def get_count(self, input_string: str, query: str) -> int:
+    def get_count_of_sub_string(self, input_string: str, sub_string: str) -> int:
         """
         Returns count of a query in the input string.
         :param input_string: Input string.
-        :param query: Query.
+        :param sub_string: Sub string to get the count of.
         """
         for char in ".,;?!‘’":
             input_string = input_string.lower().replace(char, "")
         words = input_string.split()
         result = []
-        for i in range(0, len(words), len(query.split())):
-            result.append(' '.join(words[i:i+len(query.split())]))
-        return result.count(query.lower())
+        for i in range(0, len(words), len(sub_string.split())):
+            result.append(" ".join(words[i:i+len(sub_string.split())]))
+        return result.count(sub_string.lower())
 
     def is_money_present(self, text: str) -> bool:
         """
@@ -137,30 +127,36 @@ class NyTimes:
 
     def fetch_data(self) -> None:
         """
-        Fetches the data for all the news.
+        Fetches data for all the news.
         """
-        self.create_excel(DIRECTORIES.FILEPATH)
+        create_excel(DIRECTORIES.FILEPATH)
+        news_titles = []
         date_elements = self.browser.get_webelements("//span[@class='css-17ubb9w']")
         for index, date_element in enumerate(date_elements):
             date = self.browser.get_text(date_element)
             title = self.browser.get_text(self.browser.get_webelements("//h4[@class='css-2fgx4k']")[index])
-            if self.browser.is_element_visible(f"//h4[text()='{title}']/..//p[@class='css-16nhkrn']"):
-                description = self.browser.get_text(f"//h4[text()='{title}']/..//p[@class='css-16nhkrn']")
-            else:
-                description = "Not available"
-            img_xpath = f"//div[@class='css-e1lvw9' and a/h4/text()='{title}']/following-sibling::figure[@class='css-tap2ym']/..//div/..//img[@class='css-rq4mmj']"
-            if self.browser.is_element_visible(img_xpath):
-                filepath = f"{DIRECTORIES.IMAGE_PATH}/img_{index+1}.png"
-                self.download_picture(img_xpath, filepath)
-            else:
-                filepath = "Not available"
-            wb = load_workbook(DIRECTORIES.FILEPATH)
-            sheet: Worksheet = wb.active
-            max_row = sheet.max_row
-            sheet.cell(max_row+1, 1).value = title
-            sheet.cell(max_row+1, 2).value = date
-            sheet.cell(max_row+1, 3).value = description
-            sheet.cell(max_row+1, 4).value = filepath
-            sheet.cell(max_row+1, 5).value = f"Title: {self.get_count(title, self.phrase)} | Description: {self.get_count(description, self.phrase)}"
-            sheet.cell(max_row+1, 6).value = self.is_money_present(title) or self.is_money_present(description)
-            wb.save(DIRECTORIES.FILEPATH)
+            if title not in news_titles:
+                news_titles.append(title)
+                logger.info(f"Getting data for news title: {title}")
+                if self.browser.is_element_visible(f"//h4[text()='{title}']/..//p[@class='css-16nhkrn']"):
+                    description = self.browser.get_text(f"//h4[text()='{title}']/..//p[@class='css-16nhkrn']")
+                    if description == "":
+                        description = "Not available"
+                else:
+                    description = "Not available"
+                img_xpath = f"//div[@class='css-e1lvw9' and a/h4/text()='{title}']/following-sibling::figure[@class='css-tap2ym']/..//div/..//img[@class='css-rq4mmj']"
+                if self.browser.is_element_visible(img_xpath):
+                    filepath = f"{DIRECTORIES.IMAGE_PATH}/img_{index+1}.png"
+                    self.download_picture(img_xpath, filepath)
+                else:
+                    filepath = "Not available"
+                workbook = load_workbook(DIRECTORIES.FILEPATH)
+                sheet: Worksheet = workbook.active
+                max_row = sheet.max_row
+                sheet.cell(max_row+1, 1).value = title
+                sheet.cell(max_row+1, 2).value = date
+                sheet.cell(max_row+1, 3).value = description
+                sheet.cell(max_row+1, 4).value = filepath
+                sheet.cell(max_row+1, 5).value = f"Title: {self.get_count_of_sub_string(title, self.phrase)} | Description: {self.get_count_of_sub_string(description, self.phrase)}"
+                sheet.cell(max_row+1, 6).value = self.is_money_present(title) or self.is_money_present(description)
+                workbook.save(DIRECTORIES.FILEPATH)

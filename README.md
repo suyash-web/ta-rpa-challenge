@@ -9,6 +9,7 @@ Example of how to feed workitems:
 - Value for "month" can either be an integer or a string.
 
 There can also be multiple section and they can be passed as a list in workitems as shown below:
+
 {"phrase": "machines","section": ["section1", "section2"],"months": 3}
 
 ## Note:

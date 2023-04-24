@@ -4,7 +4,7 @@ Accepts workitems having search phrase, section and number of months.
 
 Example of how to feed workitems:
 
-{
+{\
     "phrase": "machines",
     "section": "opinion",
     "months": 3

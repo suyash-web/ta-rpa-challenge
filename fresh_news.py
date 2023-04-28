@@ -201,7 +201,6 @@ class NyTimes:
         """
         create_excel(DIRECTORIES.FILEPATH)
         news_titles = []
-        extras = []
         title_elements = self.browser.get_webelements("//h4[@class='css-2fgx4k']")
         img_count = 0
         for index, title_element in enumerate(title_elements):
@@ -245,6 +244,4 @@ class NyTimes:
                     desc_count=desc_count,
                     money_present=money_present
                 )
-            else:
-                extras.append(title)
         return len(news_titles)

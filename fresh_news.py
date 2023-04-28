@@ -1,5 +1,5 @@
 from RPA.Browser.Selenium import Selenium
-from selenium.common.exceptions import ElementClickInterceptedException
+from selenium.common.exceptions import ElementClickInterceptedException, TimeoutException
 from dateutil.relativedelta import relativedelta
 from retry import retry
 from utilities import create_excel, update_excel
@@ -15,39 +15,51 @@ class NyTimes:
         self.phrase: str = workitem["phrase"]
         self.section: str = workitem["section"]
         self.months = workitem["months"]
-        self.heads = ["Title", "Date", "Description", "Picture name", "Count of search phrase", "Contains money"]
     
-    def get_date(self) -> str:
+    def get_start_date(self) -> str:
         """
         Returns a date the number of months prior to the current month.
         :param months: Number of months.
         """
         today = datetime.date.today()
         if int(self.months) == 0 or int(self.months) == 1:
-            return today.strftime("%m/%d/%Y")
+            return datetime.datetime.today().replace(day=1).strftime("%m/%d/%Y")
         three_mon_rel = relativedelta(months=int(self.months))
         req_date = (today - three_mon_rel).strftime("%m/%d/%Y")
         return req_date
 
-    def search_query(self):
+    def search_query(self) -> bool:
         """
         Opens the website and searches for the query.
         """
-        self.browser.open_available_browser("https://www.nytimes.com")
-        self.browser.maximize_browser_window()
-        self.browser.maximize_browser_window()
-        self.browser.wait_until_element_is_visible("//button[@data-test-id='search-button']", 10)
-        self.browser.click_element("//button[@data-test-id='search-button']")
-        self.browser.input_text("//input[@name='query']", self.phrase)
-        self.browser.click_element("//button[@type='submit']")
-        self.browser.wait_until_element_is_visible("//ol[@data-testid='search-results']", 10)
+        news_available = True
+        message = ""
+        if not str(self.months).isnumeric():
+            news_available = False
+            message = "Month format is not correct."
+        else:
+            self.browser.open_available_browser("https://www.nytimes.com")
+            self.browser.maximize_browser_window()
+            self.browser.wait_until_element_is_visible("//button[@data-test-id='search-button']", 10)
+            self.browser.click_element("//button[@data-test-id='search-button']")
+            self.browser.input_text("//input[@name='query']", self.phrase)
+            self.browser.click_element("//button[@type='submit']")
+            try:
+                self.browser.wait_until_element_is_visible("//ol[@data-testid='search-results']", 30)
+            except AssertionError:
+                news_available = False
+                message = f"No news found for phrase {self.phrase}"
+            if self.browser.is_element_visible("//p[text()='Showing 0 results for:']"):
+                news_available = False
+                message = f"No news found for phrase {self.phrase}"
+        return news_available, message
     
-    def set_dates(self) -> None:
+    def set_dates(self):
         """
         Sets the desired dates in the date field.
         :param months: Number of months priors to the current month.
         """
-        start_date = self.get_date()
+        start_date = self.get_start_date()
         end_date = datetime.date.today().strftime("%m/%d/%Y")
         self.browser.click_element_when_visible("//label[text()='Date Range']")
         self.browser.wait_until_element_is_visible("//li[@class='css-guqk22']", 10)
@@ -63,20 +75,48 @@ class NyTimes:
         """
         self.set_dates()
         self.browser.click_element_when_visible("//label[text()='Section']")
-        self.browser.click_element_when_visible(f"//span[text()='{self.section.capitalize()}']")
+        if self.section == "" or self.section == None:
+            self.browser.click_element_when_visible("//span[text()='Any']")
+        elif type(self.section) == list:
+            for section in self.section:
+                if type(section) == str:
+                    section: str
+                    if len(section.strip()) == 0:
+                        self.browser.click_element_when_visible("//span[text()='Any']")
+                    else:
+                        try:
+                            self.browser.click_element_when_visible(f"//span[text()='{section.title()}']")
+                        except AssertionError:
+                            logger.info(f"Section {section} is not available.")
+                            raise AssertionError
+                elif section == None:
+                    self.browser.click_element_when_visible("//span[text()='Any']")
+                else:
+                    logger.info(f"Section {section} is not available.")
+                    raise AssertionError
+        elif type(self.section) == str:
+            try:
+                self.browser.click_element_when_visible(f"//span[text()='{self.section.title()}']")
+            except AssertionError:
+                logger.info(f"Section {self.section} is not available.")
+                raise AssertionError
+        else:
+            logger.info(f"Section {section} is not available.")
+            raise AssertionError
         self.browser.click_element("//label[text()='Section']")
+        self.browser.select_from_list_by_value("//select[@data-testid='SearchForm-sortBy']", "newest")
 
     def total_news(self) -> int:
         """
-        Returns the total number of news present for the applied filters.
+        Returns the total number of news present for the current filters.
         """
         self.browser.wait_until_element_is_visible("//p[contains(text(), 'Showing')]", 5)
-        news_info = self.browser.get_text("//p[contains(text(), 'Showing')]")
-        number_of_news = int(news_info.split()[1])
+        news_info: str = self.browser.get_text("//p[contains(text(), 'Showing')]")
+        number_of_news = int(news_info.split()[1].replace(",", ""))
         return number_of_news
     
     @retry((ElementClickInterceptedException, AssertionError), 5, 5)
-    def load_more_news(self) -> None:
+    def load_more_news(self) -> bool:
         """
         Loads more news
         """
@@ -85,21 +125,32 @@ class NyTimes:
         self.browser.scroll_element_into_view("//a[@data-testid='search-result-qualtrics-link']")
 
     @retry((Exception), 5, 5)
-    def load_all_news(self) -> None:
+    def load_all_news(self) -> bool:
         """
-        Loads all the news for the given time period.
+        Loads all the news for the given time period. Returns False if all the news are not loaded.
+        :param total_news: Total number of news available.
         """
+        all_news_loaded = True
         self.browser.scroll_element_into_view("//a[@data-testid='search-result-qualtrics-link']")
         while self.browser.is_element_visible("//button[text()='Show More']"):
+            title_elements = self.browser.get_webelements("//h4[@class='css-2fgx4k']")
             self.load_more_news()
-        all_news = self.browser.get_webelements("//h4[@class='css-2fgx4k']")
-        self.browser.scroll_element_into_view(all_news[0])
+            try:
+                self.browser.wait_until_element_is_visible(f"(//h4[@class='css-2fgx4k'])[{len(title_elements)+1}]", 180)
+            except (AssertionError, TimeoutException):
+                try:
+                    self.load_more_news()
+                    self.browser.wait_until_element_is_visible(f"(//h4[@class='css-2fgx4k'])[{len(title_elements)+1}]", 120)
+                except (AssertionError, TimeoutException):
+                    all_news_loaded = False
+                    break
+            self.browser.scroll_element_into_view(title_elements[0])
+        return all_news_loaded
     
     def download_picture(self, img_xpath: str, img_path: str) -> None:
         """
         Downloads the image.
         :param img_xpath: Xpath of the image.
-        :param img_path: Path with image name where it will be downloaded.
         """
         image_url = self.browser.get_element_attribute(img_xpath, "src")
         image_data = requests.get(image_url).content
@@ -117,7 +168,7 @@ class NyTimes:
         words = input_string.split()
         result = []
         for i in range(0, len(words), len(sub_string.split())):
-            result.append(" ".join(words[i:i+len(sub_string.split())]))
+            result.append(' '.join(words[i:i+len(sub_string.split())]))
         return result.count(sub_string.lower())
 
     def is_money_present(self, text: str) -> bool:
@@ -132,37 +183,61 @@ class NyTimes:
         else:
             return False
 
-    def fetch_news_data(self) -> None:
+    def get_the_largest_element(self, list_of_strings: list) -> str:
         """
-        Fetches data for all the news.
+        Returns the element with largest number of characters in a list.
+        :param list_of_strings: List with all the string elements.
+        """
+        max_length = -1
+        for element in list_of_strings:
+            if len(element) > max_length:
+                max_length = len(element)
+                result = element
+        return result
+    
+    def fetch_data(self) -> None:
+        """
+        Fetches the data for all the news.
         """
         create_excel(DIRECTORIES.FILEPATH)
         news_titles = []
-        date_elements = self.browser.get_webelements("//span[@class='css-17ubb9w']")
-        for index, date_element in enumerate(date_elements):
-            date = self.browser.get_text(date_element)
-            title = self.browser.get_text(self.browser.get_webelements("//h4[@class='css-2fgx4k']")[index])
-            if title not in news_titles:
+        extras = []
+        title_elements = self.browser.get_webelements("//h4[@class='css-2fgx4k']")
+        img_count = 0
+        for index, title_element in enumerate(title_elements):
+            date = self.browser.get_text(self.browser.get_webelements("//span[@class='css-17ubb9w']")[index])
+            if "m ago" in date or "h ago" in date:
+                todays_date = datetime.date.today().strftime("%m/%d/%Y")
+                date_obj = datetime.datetime.strptime(todays_date, "%m/%d/%Y")
+                date = date_obj.strftime("%B %d, %Y")
+            elif "," not in date:
+                date = f"{date}, {datetime.datetime.now().year}"
+            title: str = self.browser.get_text(title_element)
+            if not title in news_titles:
+                title: str
                 news_titles.append(title)
                 logger.info(f"Getting data for news title: {title}")
-                if self.browser.is_element_visible(f"//h4[text()='{title}']/..//p[@class='css-16nhkrn']"):
-                    description = self.browser.get_text(f"//h4[text()='{title}']/..//p[@class='css-16nhkrn']")
-                    if description == "":
-                        description = "Not available"
-                else:
+                news_heading = title
+                if "'" in title:
+                    title = self.get_the_largest_element(title.split("'"))
+                desc_xpath = f"//h4[contains(text(), '{title}')]/..//p[@class='css-16nhkrn']"
+                if self.browser.is_element_visible(desc_xpath):
+                    description = self.browser.get_text(desc_xpath)
+                if not self.browser.is_element_visible(desc_xpath):
                     description = "Not available"
-                img_xpath = f"//div[@class='css-e1lvw9' and a/h4/text()='{title}']/following-sibling::figure[@class='css-tap2ym']/..//div/..//img[@class='css-rq4mmj']"
+                img_xpath = f"//div[@class='css-e1lvw9' and contains(a/h4/text(), '{title}')]/following-sibling::figure[@class='css-tap2ym']/..//div/..//img[@class='css-rq4mmj']"
                 if self.browser.is_element_visible(img_xpath):
-                    filepath = f"{DIRECTORIES.IMAGE_PATH}/img_{index+1}.png"
-                    image_name = filepath.split("/")[-1]
+                    filepath = f"{DIRECTORIES.IMAGE_PATH}/img_{img_count+1}.png"
                     self.download_picture(img_xpath, filepath)
+                    image_name = filepath.split("/")[-1]
+                    img_count += 1
                 else:
                     image_name = "Not available"
-                title_count: int = self.get_count_of_sub_string(title, self.phrase)
-                desc_count: int = self.get_count_of_sub_string(title, self.phrase)
-                money_present: bool = self.is_money_present(title) or self.is_money_present(description)
+                title_count: int = self.get_count_of_sub_string(news_heading, self.phrase)
+                desc_count: int = self.get_count_of_sub_string(description, self.phrase)
+                money_present: bool = self.is_money_present(news_heading) or self.is_money_present(description)
                 update_excel(
-                    title=title,
+                    title=news_heading,
                     date=date,
                     description=description,
                     filename=image_name,
@@ -170,3 +245,6 @@ class NyTimes:
                     desc_count=desc_count,
                     money_present=money_present
                 )
+            else:
+                extras.append(title)
+        return len(news_titles)

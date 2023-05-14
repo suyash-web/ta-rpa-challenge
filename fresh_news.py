@@ -2,7 +2,7 @@ from RPA.Browser.Selenium import Selenium
 from selenium.common.exceptions import ElementClickInterceptedException, TimeoutException
 from dateutil.relativedelta import relativedelta
 from retry import retry
-from utilities import create_excel, update_excel
+from utilities import Excel
 from config import DIRECTORIES
 from logger import logger
 import datetime
@@ -15,18 +15,16 @@ class NyTimes:
         self.phrase: str = workitem["phrase"]
         self.section: str = workitem["section"]
         self.months = workitem["months"]
+        self.excel = Excel()
     
     def get_start_date(self) -> str:
         """
         Returns a date the number of months prior to the current month.
-        :param months: Number of months.
         """
-        today = datetime.date.today()
-        if int(self.months) == 0 or int(self.months) == 1:
-            return datetime.datetime.today().replace(day=1).strftime("%m/%d/%Y")
-        three_mon_rel = relativedelta(months=int(self.months))
-        req_date = (today - three_mon_rel).strftime("%m/%d/%Y")
-        return req_date
+        current_date = datetime.datetime.now()
+        nth_month_prior_date = current_date - relativedelta(months=self.months-1)
+        first_day_of_month = nth_month_prior_date.replace(day=1).strftime("%m/%d/%Y")
+        return first_day_of_month
 
     def search_query(self) -> bool:
         """
@@ -62,9 +60,9 @@ class NyTimes:
         start_date = self.get_start_date()
         end_date = datetime.date.today().strftime("%m/%d/%Y")
         self.browser.click_element_when_visible("//label[text()='Date Range']")
-        self.browser.wait_until_element_is_visible("//li[@class='css-guqk22']", 10)
+        self.browser.wait_until_element_is_visible("//button[@data-testid='search-date-dropdown-a']/..//div//li", 10)
         self.browser.click_element_when_visible("//button[text()='Specific Dates']")
-        self.browser.wait_until_element_is_visible("//div[@class='css-79elbk']", 5)
+        self.browser.wait_until_element_is_visible("//div[@data-testid='search-day-picker']/div", 5)
         self.browser.input_text("//input[@data-testid='DateRange-startDate']", start_date)
         self.browser.input_text("//input[@data-testid='DateRange-endDate']", end_date)
         self.browser.press_keys("//input[@data-testid='DateRange-endDate']", "RETURN")
@@ -122,7 +120,6 @@ class NyTimes:
         """
         element = self.browser.get_webelement("//button[text()='Show More']")
         self.browser.driver.execute_script("arguments[0].click();", element)
-        self.browser.scroll_element_into_view("//a[@data-testid='search-result-qualtrics-link']")
 
     @retry((Exception), 5, 5)
     def load_all_news(self) -> bool:
@@ -133,18 +130,20 @@ class NyTimes:
         all_news_loaded = True
         self.browser.scroll_element_into_view("//a[@data-testid='search-result-qualtrics-link']")
         while self.browser.is_element_visible("//button[text()='Show More']"):
-            title_elements = self.browser.get_webelements("//h4[@class='css-2fgx4k']")
+            title_elements = self.browser.get_webelements("//li[@data-testid='search-bodega-result']//h4")
             self.load_more_news()
             try:
-                self.browser.wait_until_element_is_visible(f"(//h4[@class='css-2fgx4k'])[{len(title_elements)+1}]", 180)
+                self.browser.wait_until_element_is_visible(f"(//li[@data-testid='search-bodega-result']//h4)[{len(title_elements)+1}]", 180)
+                self.browser.scroll_element_into_view("//a[@data-testid='go-to-homepage']")
             except (AssertionError, TimeoutException):
                 try:
                     self.load_more_news()
-                    self.browser.wait_until_element_is_visible(f"(//h4[@class='css-2fgx4k'])[{len(title_elements)+1}]", 120)
+                    self.browser.wait_until_element_is_visible(f"(//li[@data-testid='search-bodega-result']//h4)[{len(title_elements)+1}]", 120)
+                    self.browser.scroll_element_into_view("//a[@data-testid='go-to-homepage']")
                 except (AssertionError, TimeoutException):
                     all_news_loaded = False
                     break
-            self.browser.scroll_element_into_view(title_elements[0])
+        self.browser.scroll_element_into_view(title_elements[0])
         return all_news_loaded
     
     def download_picture(self, img_xpath: str, img_path: str) -> None:
@@ -199,12 +198,12 @@ class NyTimes:
         """
         Fetches the data for all the news.
         """
-        create_excel(DIRECTORIES.FILEPATH)
+        self.excel.create_excel(DIRECTORIES.FILEPATH)
         news_titles = []
-        title_elements = self.browser.get_webelements("//h4[@class='css-2fgx4k']")
+        title_elements = self.browser.get_webelements("//li[@data-testid='search-bodega-result']//h4")
         img_count = 0
         for index, title_element in enumerate(title_elements):
-            date = self.browser.get_text(self.browser.get_webelements("//span[@class='css-17ubb9w']")[index])
+            date = self.browser.get_text(self.browser.get_webelements("//li[@data-testid='search-bodega-result']/div/span[@data-testid='todays-date']")[index])
             if "m ago" in date or "h ago" in date:
                 todays_date = datetime.date.today().strftime("%m/%d/%Y")
                 date_obj = datetime.datetime.strptime(todays_date, "%m/%d/%Y")
@@ -219,12 +218,12 @@ class NyTimes:
                 news_heading = title
                 if "'" in title:
                     title = self.get_the_largest_element(title.split("'"))
-                desc_xpath = f"//h4[contains(text(), '{title}')]/..//p[@class='css-16nhkrn']"
+                desc_xpath = f"//h4[text()='{title}']/following-sibling::p[1]"
                 if self.browser.is_element_visible(desc_xpath):
                     description = self.browser.get_text(desc_xpath)
                 if not self.browser.is_element_visible(desc_xpath):
                     description = "Not available"
-                img_xpath = f"//div[@class='css-e1lvw9' and contains(a/h4/text(), '{title}')]/following-sibling::figure[@class='css-tap2ym']/..//div/..//img[@class='css-rq4mmj']"
+                img_xpath = f"//div[contains(a/h4/text(), '{title}')]/following-sibling::figure//img"
                 if self.browser.is_element_visible(img_xpath):
                     filepath = f"{DIRECTORIES.IMAGE_PATH}/img_{img_count+1}.png"
                     self.download_picture(img_xpath, filepath)
@@ -232,16 +231,18 @@ class NyTimes:
                     img_count += 1
                 else:
                     image_name = "Not available"
+                news_data = []
                 title_count: int = self.get_count_of_sub_string(news_heading, self.phrase)
                 desc_count: int = self.get_count_of_sub_string(description, self.phrase)
                 money_present: bool = self.is_money_present(news_heading) or self.is_money_present(description)
-                update_excel(
-                    title=news_heading,
-                    date=date,
-                    description=description,
-                    filename=image_name,
-                    title_count=title_count,
-                    desc_count=desc_count,
-                    money_present=money_present
+                news_data.append(news_heading)
+                news_data.append(date)
+                news_data.append(description)
+                news_data.append(image_name)
+                news_data.append(f"Title: {title_count} | Description: {desc_count}")
+                news_data.append(money_present)
+                self.excel.update_excel(
+                    DIRECTORIES.FILEPATH,
+                    news_data
                 )
         return len(news_titles)
